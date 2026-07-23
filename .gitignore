@@ -1,5 +1,5 @@
 __pycache__/
-ckpt_run*.pt
-ckpt_baseline.pt
-ckpt.pt
 *.pyc
+ckpt_run*.pt
+ckpt_r*.pt
+ckpt_baseline.pt

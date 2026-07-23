@@ -18,7 +18,11 @@ Metric: dev bits-per-byte (bpb), lower is better. Cap: <=2000 steps, <=2,000,000
 | 10 | + QK-Norm (block128 probe) | 1.7600 | 1,913,600 | REJECTED — hurt at same LR |
 | 11 | QK-Norm + lr 3e-3 (closure) | 1.7591 | 1,913,600 | REJECTED — QK-Norm does not unlock higher LR |
 | 12 | block256 + lr2e-3 + ReLU^2 | 1.7386 | 1,933,760 | ReLU^2 helps at block128, hurts here -> not robust, dropped |
-| 13 | **FINAL: block256 + lr2e-3 + GELU (no qk-norm, no relu2)** | **1.7155** | 1,933,760 | deliverable ckpt.pt (27.7% under baseline) |
+| 13 | block256 + lr2e-3 + GELU (prev final) | 1.7155 | 1,933,760 | superseded by RoPE runs below |
+| 14 | plain block128 (current-code baseline) | 1.7266 | 1,913,280 | confirms current code == Run 5 |
+| 15 | + RoPE (block128) | 1.6825 | 1,892,800 | REAL win; param-negative; loss 4.12->3.82 |
+| 16 | + RoPE + RMSNorm (block128) | 1.6784 | 1,891,360 | best block128; RMSNorm adds a hair, param-negative |
+| 17 | **FINAL: block256 + lr2e-3 + RoPE + RMSNorm** | **1.6717** | 1,891,360 | deliverable ckpt.pt (29.5% under baseline) |
 
 ---
 
@@ -88,3 +92,26 @@ Metric: dev bits-per-byte (bpb), lower is better. Cap: <=2000 steps, <=2,000,000
 **Changed (model.py):** added per-head RMSNorm on q and k before attention (+320 params).
 **Result:** 1.7266 -> **1.7600 (worse)** at the same LR.
 **Conclusion:** Wrong hypothesis. Forcing unit-RMS q/k discards magnitude information the small model actually uses, and 2000 steps is too few for the learnable gains to recover it. Same pattern as Run 2: a stability trick tuned for long runs is a net constraint under a hard step cap. Verified it also does not unlock a higher LR (Run 11). REJECTED.
+
+## Run 11 — QK-Norm + lr 3e-3 (closure)
+**Result:** 1.7591 — still worse than 1.7266. QK-Norm does NOT let us push LR higher. Hypothesis fully closed.
+
+## Run 12 — block256 + lr2e-3 + ReLU^2
+**Result:** 1.7386, WORSE than the block256+lr2e-3 GELU run (1.7155). ReLU^2 helped +0.006 at block128 but hurt +0.023 here -> not robust. **Dropped ReLU^2.**
+
+## Run 13 — block256 + lr2e-3 + GELU (previous final)
+**Result:** 1.7155, reproduced exactly under the refactored model.py. Was the deliverable until RoPE beat it.
+
+## Runs 14-16 — RoPE probes (block 128, one clean current-code baseline)
+**Hypothesis:** rotary embeddings give a relative-position prior and are parameter-negative (removes the block_size x n_embd table). Skeptical going in: the usual RoPE headline (length generalization) is dead here because the scorer evaluates at the training block size.
+**Changed (model.py):** learned pos_emb -> RoPE inside attention (rotate q,k); optionally RMSNorm for the norms.
+**Results:**
+  - Run 14 plain (control): 1.7266 (== Run 5, confirms the refactor is clean).
+  - Run 15 RoPE: **1.6825** (-2.6%), params 1,892,800 (freed the 40,960 pos table). Train loss 4.12 -> 3.82: learns FASTER, not just lower.
+  - Run 16 RoPE + RMSNorm: **1.6784**, params 1,891,360. RMSNorm adds a hair and is also param-negative.
+**Conclusion:** RoPE is the one modern-arch trick that clearly pays off under the step cap, and it overruled my prior. The relative-position inductive bias helps even without a length gap, and being parameter-free it wastes nothing. Promote RoPE+RMSNorm to the block-256 final.
+
+## Run 17 — FINAL: block256 + lr2e-3 + batch32 + RoPE + RMSNorm
+**Changed:** best block128 config (Runs 15-16) applied at block 256 (best context from Run 8).
+**Result:** dev bpb **1.6717**, params 1,891,360 < 2,000,000, 2000 steps. Deliverable ckpt.pt.
+**Conclusion:** Final = BPE(4096)+tying + AdamW/warmup/cosine + batch32 + lr2e-3 + block256 + RoPE + RMSNorm. Total reduction from 2.3718 baseline = 29.5%.

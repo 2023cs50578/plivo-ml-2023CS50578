@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plivo 2,000-Step LLM Speedrun — Summary</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --ink:#e8eaed; --muted:#9aa3af;
+    --line:#262b34; --accent:#5b9dff; --good:#3fb950; --bad:#f85149; --warn:#d29922;
+  }
+  @media (prefers-color-scheme: light){
+    :root{--bg:#f7f8fa; --panel:#fff; --ink:#12151a; --muted:#5b636e; --line:#e6e8ec; --accent:#2563eb;}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:920px;margin:0 auto;padding:32px 20px 64px}
+  h1{font-size:26px;margin:0 0 4px} h2{font-size:18px;margin:34px 0 12px}
+  .sub{color:var(--muted);margin:0 0 20px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:18px 0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  .card .v{font-size:24px;font-weight:650;margin-top:4px}
+  .card .v small{font-size:13px;color:var(--muted);font-weight:400}
+  table{width:100%;border-collapse:collapse;background:var(--panel);
+    border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:14px}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  tr:last-child td{border-bottom:none}
+  td.n{font-variant-numeric:tabular-nums;text-align:right}
+  .good{color:var(--good)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+  .bar{height:150px;display:flex;align-items:flex-end;gap:10px;padding:14px;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px}
+  .bar .col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%}
+  .bar .col .fill{width:100%;background:linear-gradient(180deg,var(--accent),#3567c9);
+    border-radius:6px 6px 0 0;min-height:2px}
+  .bar .col .lbl{font-size:11px;color:var(--muted);text-align:center}
+  .bar .col .val{font-size:11px;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;
+    background:rgba(91,157,255,.14);color:var(--accent);border:1px solid rgba(91,157,255,.3)}
+  code{background:rgba(127,127,127,.15);padding:1px 5px;border-radius:5px;font-size:13px}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:640px){.split{grid-template-columns:1fr}}
+  ul{margin:8px 0 0;padding-left:20px} li{margin:4px 0}
+  .foot{color:var(--muted);font-size:12px;margin-top:28px;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>2,000-Step LLM Speedrun</h1>
+  <p class="sub">Make a deliberately-mediocre from-scratch GPT as good as possible under hard caps
+    (&le;2000 steps, &le;2M params, CPU-only). Metric: <b>dev bits-per-byte</b>, lower is better.</p>
+
+  <div class="cards">
+    <div class="card"><div class="k">Baseline bpb</div><div class="v">2.3718</div></div>
+    <div class="card"><div class="k">Final bpb</div><div class="v good">1.6717</div></div>
+    <div class="card"><div class="k">Reduction</div><div class="v good">29.5%</div></div>
+    <div class="card"><div class="k">Params</div><div class="v">1.89M <small>/ 2.00M cap</small></div></div>
+    <div class="card"><div class="k">Steps</div><div class="v">2000 <small>/ 2000 cap</small></div></div>
+  </div>
+
+  <h2>How the score fell — the levers that mattered</h2>
+  <div class="bar" id="chart">
+    <div class="col"><div class="fill" style="height:100%"></div><div class="val">2.372</div><div class="lbl">baseline</div></div>
+    <div class="col"><div class="fill" style="height:79%"></div><div class="val">2.245</div><div class="lbl">+schedule</div></div>
+    <div class="col"><div class="fill" style="height:62%"></div><div class="val">2.030</div><div class="lbl">+BPE</div></div>
+    <div class="col"><div class="fill" style="height:44%"></div><div class="val">1.796</div><div class="lbl">+batch32</div></div>
+    <div class="col"><div class="fill" style="height:38%"></div><div class="val">1.727</div><div class="lbl">+lr2e-3</div></div>
+    <div class="col"><div class="fill" style="height:33%"></div><div class="val">1.716</div><div class="lbl">+block256</div></div>
+    <div class="col"><div class="fill good-fill" style="height:24%;background:linear-gradient(180deg,#3fb950,#2ea043)"></div><div class="val good">1.6717</div><div class="lbl">+RoPE+RMS</div></div>
+  </div>
+
+  <h2>Full run log (17 experiments)</h2>
+  <table>
+    <thead><tr><th>#</th><th>Change (one at a time)</th><th class="n">bpb</th><th>verdict</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>Baseline (constant-LR Adam, byte tokenizer)</td><td class="n">2.3718</td><td>—</td></tr>
+      <tr><td>1</td><td>AdamW + warmup/cosine + weight decay + grad clip</td><td class="n">2.2447</td><td class="good">keep</td></tr>
+      <tr><td>2</td><td>GPT-2 init + residual scaling + tying (isolated 2a/2b)</td><td class="n">2.4664</td><td class="bad">reverted</td></tr>
+      <tr><td>3</td><td>BPE tokenizer vocab 4096 + tying <span class="pill">big lever</span></td><td class="n">2.0296</td><td class="good">keep</td></tr>
+      <tr><td>4</td><td>Batch 8 &rarr; 32</td><td class="n">1.7956</td><td class="good">keep</td></tr>
+      <tr><td>5</td><td>Peak LR 1e-3 &rarr; 2e-3</td><td class="n">1.7266</td><td class="good">keep</td></tr>
+      <tr><td>6</td><td>Block 128 &rarr; 256 (at old LR)</td><td class="n">1.7653</td><td class="good">keep</td></tr>
+      <tr><td>7</td><td>LR 3e-3</td><td class="n">1.7431</td><td class="bad">overshoot</td></tr>
+      <tr><td>8</td><td>block256 + lr2e-3 (levers stacked)</td><td class="n">1.7155</td><td class="good">keep</td></tr>
+      <tr><td>9</td><td>Squared-ReLU MLP</td><td class="n">1.7207</td><td class="warn">not robust</td></tr>
+      <tr><td>10</td><td>QK-Norm</td><td class="n">1.7600</td><td class="bad">rejected</td></tr>
+      <tr><td>11</td><td>QK-Norm + lr3e-3 (closure)</td><td class="n">1.7591</td><td class="bad">rejected</td></tr>
+      <tr><td>12</td><td>block256 + ReLU&sup2;</td><td class="n">1.7386</td><td class="bad">dropped</td></tr>
+      <tr><td>14</td><td>plain block128 (current-code control)</td><td class="n">1.7266</td><td>—</td></tr>
+      <tr><td>15</td><td>+ RoPE (param-negative)</td><td class="n">1.6825</td><td class="good">real win</td></tr>
+      <tr><td>16</td><td>+ RoPE + RMSNorm</td><td class="n">1.6784</td><td class="good">best 128</td></tr>
+      <tr><td><b>17</b></td><td><b>FINAL: block256 + lr2e-3 + RoPE + RMSNorm</b></td><td class="n good"><b>1.6717</b></td><td class="good">ship</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Final architecture</h2>
+  <div class="split">
+    <div class="card">
+      <b>Tokenizer</b>
+      <ul>
+        <li>Byte-level <b>BPE, vocab 4096</b>, trained on the corpus only</li>
+        <li>Lossless byte fallback (round-trip verified)</li>
+        <li>~4.0 bytes/token vs 1.0 for the byte baseline</li>
+        <li>Incremental lazy-heap trainer: full 7&nbsp;MB in ~8&nbsp;s</li>
+      </ul>
+    </div>
+    <div class="card">
+      <b>Model &amp; training</b>
+      <ul>
+        <li>GPT, 4 layers, n_embd 160, 4 heads, <b>block 256</b></li>
+        <li><b>Tied</b> input/output embeddings (fits the 2M cap)</li>
+        <li><b>RoPE</b> positions, <b>RMSNorm</b>, GELU MLP</li>
+        <li>AdamW, warmup+cosine to 10%, wd 0.1, clip 1.0</li>
+        <li>batch 32, peak LR 2e-3, 2000 steps, CPU</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>What was tried and rejected (and why)</h2>
+  <p>Every fashionable modern-arch trick that <i>failed</i> failed for the same reason — it is tuned for
+  long, stable training this 2000-step cap does not provide: <b>GPT-2 small-init + residual scaling</b>
+  (underfits in 2000 steps), <b>QK-Norm</b> (discards q/k magnitude the small model uses; also does not
+  unlock a higher LR), <b>squared-ReLU</b> (helped at block128, hurt at block256 &mdash; noise). The tricks
+  that <i>won</i> either change the data representation (BPE) or add a sound, parameter-free prior (RoPE).</p>
+
+  <h2>Human vs. machine</h2>
+  <div class="split">
+    <div class="card"><b>Machine (AI coding assistant)</b>
+      <ul>
+        <li>Wrote boilerplate: BPE implementation, RoPE/RMSNorm modules, schedule code</li>
+        <li>Ran training/eval commands and tabulated numbers</li>
+        <li>Drafted this HTML and the run-log prose</li>
+      </ul>
+    </div>
+    <div class="card"><b>Human (my direction &amp; judgment)</b>
+      <ul>
+        <li>Read the per-byte scorer first and identified the tokenizer as the lever</li>
+        <li>Chose the experiment order and enforced one-change-at-a-time</li>
+        <li>Isolated the Run-2 failure (2a/2b) instead of trusting a bundled change</li>
+        <li>Diagnosed <i>why</i> tricks failed (step cap vs long-run tuning) and predicted tying would flip at vocab 4096</li>
+        <li>Rejected non-robust wins (ReLU&sup2;) and promoted the robust one (RoPE)</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="foot">Reproduce:
+    <code>python tokenizer.py --train --data ../data/train_corpus.txt --vocab 4096</code> &rarr;
+    <code>python train.py --data ../data/train_corpus.txt --steps 2000 --batch 32 --lr 2e-3 --block 256 --rope --rmsnorm --out ckpt.pt</code> &rarr;
+    <code>python evaluate.py --checkpoint ckpt.pt --text_file ../data/dev_eval.txt</code>.
+    Scorer <code>evaluate.py</code> is byte-identical to the starter. See RUNLOG.md and NOTES.md.</p>
+</div>
+</body>
+</html>
